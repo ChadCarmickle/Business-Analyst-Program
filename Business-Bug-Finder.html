@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<script>window.STANDALONE=true;</script>
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Business Bug Finder</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow working column; a six-step rail on top; each step is one panel; the last step is a report ticket. */
+:root{
+  --bg:#f2f5f4; --surface:#ffffff; --ink:#16211f; --muted:#56655f; --line:#d3dbd8;
+  --accent:#0d6a5b; --on-accent:#ffffff;
+  --warn:#8f4e00; --warn-soft:#fbeeda; --crit:#a8281f; --good:#256b2c;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#101615; --surface:#18201e; --ink:#e5ecea; --muted:#9baba6; --line:#2d3a36;
+  --accent:#5fcbb5; --on-accent:#06201b;
+  --warn:#e9ab55; --warn-soft:#33270f; --crit:#f08b82; --good:#7fcf86; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#101615; --surface:#18201e; --ink:#e5ecea; --muted:#9baba6; --line:#2d3a36;
+  --accent:#5fcbb5; --on-accent:#06201b;
+  --warn:#e9ab55; --warn-soft:#33270f; --crit:#f08b82; --good:#7fcf86; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5}
+.wrap{max-width:880px;margin:0 auto;padding-block:28px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:20px}
+h1{font-size:1.6rem;line-height:1.2;margin:0;font-weight:600;text-wrap:balance}
+h2{font-size:1.25rem;line-height:1.25;margin:0;font-weight:600;text-wrap:balance}
+h3{font-size:1rem;margin:0;font-weight:600}
+p{margin:0;max-width:65ch}
+.lede{color:var(--muted)}
+.eyebrow{font-family:var(--mono);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+header{display:flex;flex-direction:column;gap:8px}
+.banner{background:var(--warn-soft);border-left:3px solid var(--warn);padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.banner span{min-width:0;flex:1 1 260px}
+nav{display:flex;flex-wrap:wrap;gap:6px}
+nav button{flex:1 1 120px;text-align:left;background:transparent;border:0;border-top:3px solid var(--line);padding:8px 4px 4px;color:var(--muted);font:inherit;cursor:pointer}
+nav button b{display:block;color:var(--ink);font-weight:600}
+nav button small{font-family:var(--mono);font-size:.72rem}
+nav button[aria-current="step"]{border-top-color:var(--accent)}
+nav button[aria-current="step"] small{color:var(--accent)}
+main{background:var(--surface);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:20px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.row>*{min-width:0}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.row>.field{flex:1 1 170px}
+label,.lab{font-size:.85rem;color:var(--muted);font-weight:500}
+input[type=text],input[type=number],select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);padding:8px 10px;width:100%;min-width:0;border-radius:3px}
+textarea{resize:vertical;min-height:2.6em}
+:is(input,select,textarea,button,summary):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.btn{font:inherit;font-weight:500;padding:8px 14px;border-radius:3px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);cursor:pointer}
+button.ghost{font:inherit;padding:6px 12px;border-radius:3px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+button.ghost.danger{color:var(--crit)}
+button:disabled{opacity:.55;cursor:default}
+hr{border:0;border-top:1px solid var(--line);margin:0;width:100%}
+.area{margin-top:18px;font-family:var(--mono);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+ol.ladder{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+ol.ladder li{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+ol.ladder li span{font-family:var(--mono);font-size:.8rem;color:var(--accent);padding-top:3px}
+ol.ladder li q{quotes:none;font-weight:500}
+ol.ladder li em{display:block;font-style:normal;color:var(--muted);font-size:.85rem}
+details{border-top:1px solid var(--line);padding:8px 0}
+details summary{cursor:pointer;font-weight:500}
+details p{margin-top:6px}
+.prow{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;align-items:start;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.lrow{display:grid;grid-template-columns:1fr 2fr auto;gap:8px;align-items:start}
+.check{display:grid;grid-template-columns:1fr auto;gap:8px 16px;padding:12px 0;border-top:1px solid var(--line);align-items:center}
+.check .ev{grid-column:1/-1}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.seg label{padding:6px 12px;cursor:pointer;color:var(--ink);font-weight:400;border-left:1px solid var(--line)}
+.seg label:first-of-type{border-left:0}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg input:checked+label{background:var(--accent);color:var(--on-accent)}
+.seg input:focus-visible+label{outline:2px solid var(--accent);outline-offset:-2px}
+ul.plain{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+ul.plain li{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg)}
+ul.plain li span{flex:1 1 240px;min-width:0}
+.prob{border:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.tag{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.why{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:start}
+.why .w-ev{grid-column:2;grid-row:2}
+.why .w-rm{grid-column:3;grid-row:1}
+.why i{font-style:normal;font-family:var(--mono);color:var(--accent);padding-top:9px}
+.hint{font-size:.88rem;color:var(--warn)}
+.ok{font-size:.88rem;color:var(--good)}
+.note{font-size:.88rem;color:var(--muted)}
+.tick{display:flex;gap:8px;align-items:flex-start;color:var(--ink);font-weight:400;font-size:.95rem}
+.tick input{margin-top:5px}
+.out{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:500}
+.box{background:var(--bg);border-left:3px solid var(--accent);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.trail{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:.9rem;color:var(--muted)}
+.trail li b{color:var(--ink);margin-left:8px}
+.scroll{overflow-x:auto;max-width:100%}
+.m-lane{stroke:var(--line);fill:none}
+.m-box{fill:var(--surface);stroke:var(--muted)}
+.m-t{fill:var(--ink);font:13px var(--sans)}
+.m-l{fill:var(--muted);font:600 12px var(--sans)}
+.m-a{stroke:var(--muted);fill:none;stroke-width:1.25}
+.m-h{stroke:var(--accent);fill:none;stroke-width:2.5}
+.m-ah{fill:var(--muted)}
+.m-hh{fill:var(--accent)}
+table{border-collapse:collapse;font-size:.88rem;min-width:640px;width:100%}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+pre.ticket{font-family:var(--mono);font-size:.82rem;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-left:3px solid var(--accent);padding:16px;margin:0}
+.gaps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+@media print{nav,#banner,#mode,button,.note,hr{display:none!important}main{border:0;padding:0}}
+@media (max-width:560px){
+  main{padding:16px}
+  ol.ladder li{grid-template-columns:1fr;gap:2px}
+  .check{grid-template-columns:1fr}
+  .lrow{grid-template-columns:1fr}
+}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Diagnose before you design</span>
+    <h1>Business Bug Finder</h1>
+    <p class="lede">Work like a virtual CIO: start with the business, not the technology. Six steps take you from first questions to traced causes, a sized problem, options compared side by side and a recommendation you can defend.</p>
+  </header>
+  <div id="banner"></div>
+  <div id="mode"></div>
+  <nav id="nav" aria-label="Steps"></nav>
+  <main id="panel"></main>
+</div>
+
+<script>
+(function(){
+var KEY='business-bug-finder-v7';
+var STEPS=[['ask','Ask','Understand the business'],['check','Check','Scan six areas'],['dig','Dig','Trace the causes'],['size','Size','Time, money and risk'],['fix','Fix','Compare options'],['report','Report','Write it up']];
+var MULT={day:250,week:50,month:12,year:1};
+var CHECKS=[
+ {id:'owner',area:'People',type:'owner',t:'Nobody clearly owns the process or decides how it is done',q:'Who decides how this is done? Who is accountable when it goes wrong?',p:'Nobody owns the process or decides how it is done'},
+ {id:'train',area:'People',type:'owner',t:'People were never trained, or each does it a different way',q:'How did you learn to do this? Does everyone do it the same way?',p:'People do the same task in different ways'},
+ {id:'one',area:'People',type:'head',t:'The work depends on one person who knows how it is done',q:'Who else can do this? What happens when that person is out?',p:'The work depends on one person who knows how it is done'},
+ {id:'wait',area:'Process',type:'flow',t:'Work sits waiting for a person, an approval or a handoff',q:'Where does work wait, and for how long?',p:'Work waits at handoffs or approvals'},
+ {id:'repeat',area:'Process',type:'manual',t:'People repeat the same rule-based steps by hand',q:'Which steps are the same every time? How long do they take?',p:'Staff repeat the same rule-based steps by hand'},
+ {id:'around',area:'Process',type:'fit',t:'People keep workarounds: side lists, sticky notes, personal files',q:'What do you keep on the side that is not in the official system?',p:'Staff rely on workarounds outside the official system'},
+ {id:'copies',area:'Data',type:'truth',t:'More than one copy of the same data is in use',q:'How many copies of this data exist, and how do you know which one is current?',p:'People work from different copies of the data, so nobody knows which is correct'},
+ {id:'retype',area:'Data',type:'integrate',t:'The same data is typed into more than one place',q:'Where else does this same information get entered?',p:'The same data is entered by hand in more than one place'},
+ {id:'valid',area:'Data',type:'valid',t:'Nothing stops bad data from being entered',q:'What stops someone from typing a wrong value? How are mistakes caught?',p:'Bad data can be entered with nothing to catch it'},
+ {id:'reports',area:'Data',type:'report',t:'Reports are built by hand',q:'How do you produce reports from this, and how long does that take?',p:'Reports are assembled by hand'},
+ {id:'lock',area:'Technology',type:'multi',t:'Two people cannot work in it at the same time',q:'What happens when two people need to update it at once?',p:'Only one person can update it at a time, so others wait or work around it'},
+ {id:'slow',area:'Technology',type:'capacity',t:'The tool is slow, crashes or has reached its limit',q:'Has it ever been slow, crashed or lost work? Tell me about the last time.',p:'The tool is slow, crashes or has reached its limit'},
+ {id:'old',area:'Technology',type:'capacity',t:'The tool is out of date, unsupported, or nobody can change it',q:'Who supports this tool? When was it last updated? Who can change it?',p:'The tool is unsupported or cannot be changed'},
+ {id:'audit',area:'Risk and security',type:'audit',t:'Nobody can tell who changed what, or when',q:'If a number changes, how do you find out who changed it and when?',p:'Changes cannot be traced to a person or a time'},
+ {id:'access',area:'Risk and security',type:'access',t:'People can see or change more than their job needs',q:'Who can open this? Is there anything in it they should not see or change?',p:'People can see or change more than their job needs'},
+ {id:'share',area:'Risk and security',type:'access',t:'Sensitive data moves by email, personal devices or shared passwords',q:'How is this data shared? Who knows the password?',p:'Sensitive data is shared in ways that cannot be controlled'},
+ {id:'backup',area:'Risk and security',type:'backup',t:'If the data were lost tomorrow, nobody is sure it could be restored',q:'Where is this backed up? When was a restore last tested?',p:'There is no tested backup of the data'},
+ {id:'rules',area:'Risk and security',type:'audit',t:'A law, contract or regulator sets rules for this work, and nobody is sure they are met',q:'Which rules apply to this work or data? How do you show that you meet them?',p:'The process may not meet outside rules that apply to it'},
+ {id:'vendor',area:'Outside the team',type:'external',t:'A vendor, customer or other team controls a step, the tool or the data',q:'Which steps depend on someone outside the team? What happens when they are slow?',p:'A step depends on a party the team does not control'},
+ {id:'volume',area:'Outside the team',type:'scale',t:'Volume has grown, or is about to, beyond what the process was built for',q:'How has the volume changed in the last two years? What is expected next year?',p:'The work has outgrown what the current setup was built for'},
+ {id:'staff',area:'Outside the team',type:'external',t:'There are not enough people or hours, whatever the tool',q:'If the tool were perfect, would the team still be short of time?',p:'The team is short of people or hours regardless of the tool'}
+];
+var SEC=[
+ {id:'who',area:'Security baseline',f:'Govern',type:'secure',t:'Nobody is named as responsible for keeping this data safe',q:'Who is accountable for keeping this data safe?',p:'Nobody is accountable for the security of this data'},
+ {id:'rules',area:'Security baseline',f:'Govern',type:'audit',t:'A law, contract or regulator sets rules for this work, and nobody is sure they are met',q:'Which rules apply to this work or data? How do you show that you meet them?',p:'The process may not meet outside rules that apply to it'},
+ {id:'know',area:'Security baseline',f:'Identify',type:'secure',t:'Nobody has listed what sensitive data is held, or where every copy is',q:'What sensitive data does this process hold, and where is every copy?',p:'Nobody knows what sensitive data is held or where it is'},
+ {id:'plan',area:'Security baseline',f:'Identify',type:'secure',t:'There is no agreed plan for what to do if data is lost or stolen',q:'If this data were stolen tomorrow, who does what in the first hour?',p:'There is no plan for a data loss or theft'},
+ {id:'access',area:'Security baseline',f:'Protect',type:'access',t:'People can see or change more than their job needs',q:'Who can open this? Is there anything in it they should not see or change?',p:'People can see or change more than their job needs'},
+ {id:'leave',area:'Security baseline',f:'Protect',type:'access',t:'People who left or changed jobs may still have access',q:'When someone leaves, who removes their access, and how fast?',p:'Former staff may still have access'},
+ {id:'mfa',area:'Security baseline',f:'Protect',type:'secure',t:'Accounts are protected by a password only, with no second step',q:'Which systems ask for a code or an app approval as well as a password?',p:'Accounts have no second sign-in step'},
+ {id:'share',area:'Security baseline',f:'Protect',type:'access',t:'Sensitive data moves by email, personal devices or shared passwords',q:'How is this data shared? Who knows the password?',p:'Sensitive data is shared in ways that cannot be controlled'},
+ {id:'patch',area:'Security baseline',f:'Protect',type:'secure',t:'Devices or software are not kept up to date',q:'Who installs updates, and how do you know they are done?',p:'Devices or software are not kept up to date'},
+ {id:'backup',area:'Security baseline',f:'Protect',type:'backup',t:'If the data were lost tomorrow, nobody is sure it could be restored',q:'Where is this backed up? When was a restore last tested?',p:'There is no tested backup of the data'},
+ {id:'audit',area:'Security baseline',f:'Protect',type:'audit',t:'Nobody can tell who changed what, or when',q:'If a number changes, how do you find out who changed it and when?',p:'Changes cannot be traced to a person or a time'},
+ {id:'notice',area:'Security baseline',f:'Detect',type:'secure',t:'Nobody would notice unusual access or changes',q:'If someone copied or changed this data at night, how would you find out?',p:'Unusual access or changes would go unnoticed'}
+];
+(function(){var keep=CHECKS.filter(function(c){return c.area!=='Risk and security';}),i=0;while(i<keep.length&&keep[i].area!=='Outside the team')i++;CHECKS=keep.slice(0,i).concat(SEC,keep.slice(i));})();
+var CLUES=[
+ ['"Usually" or "most of the time"','There are exceptions nobody tracks.','What happens the other times? How often is that?'],
+ ['"It depends"','There are hidden rules.','Depends on what? Give me two different cases.'],
+ ['"I just know" or "ask Pat"','The knowledge lives in one person\'s head.','What happens when that person is out?'],
+ ['"I copy it into…" or "I re-type it"','The same data is entered more than once.','How many places is it entered? Which one is right when they disagree?'],
+ ['"We email it around"','There is no single current version.','How do you know you have the latest one?'],
+ ['"We check it by hand"','Nothing stops bad data automatically.','How many errors get through? Who catches them, and when?'],
+ ['"It gets crazy at month-end"','The process fails under peak load.','How much more work is it? What gets skipped?'],
+ ['"It has always been done this way"','Nobody owns the process.','Who decides how this is done? When was it last changed?']
+];
+var BIZ=['What is the business trying to achieve this year, and does this process help or hurt that?','If this problem disappeared, what would you do with the time or money?','What have you already tried, and why did it not stick?','What other teams or systems does this process feed?','Who would have to approve a change, and who would have to live with it?','Is the volume of this work growing, steady or shrinking?'];
+var RC={
+ owner:['Nobody owns the process, or there is no standard way to do it','No technology yet: name an owner, agree the steps, train people','Not an IT cause. Software placed on top of it will fail the same way.'],
+ head:['The rules live in one person\'s head','Write the rules down, then build them into the tool','Half of this fix is not software.'],
+ flow:['Work waits at handoffs or approvals','Workflow with routing, notifications and visible status','First check whether each approval is needed at all.'],
+ truth:['Several copies, no single current record','One shared data store that everyone reads and writes','The fix is a single source of truth. "The cloud" or "an app" is not the fix by itself.'],
+ integrate:['The same data is typed into two systems','An integration that passes data between the two systems','A connection problem, not a new-application problem.'],
+ valid:['Bad data gets in','Validation at the point of entry: required fields, pick lists, format checks','Often fixable inside the tool they already have.'],
+ report:['Reports are built by hand','A reporting layer on top of the existing data','The data may be fine. Only the output is manual.'],
+ manual:['People repeat rule-based steps by hand','Workflow automation','Fix the steps first. Automating a broken process makes it fail faster.'],
+ multi:['Two people cannot work in it at once','A multi-user system that lets people save without overwriting each other','A co-edited online file may be enough. A database is not automatically required.'],
+ capacity:['The tool is too slow, too old or at its limit','Move to a tool built for the volume (a migration)','Migration moves the data. It does not fix bad data or bad steps.'],
+ fit:['The official tool does not fit the work, so people work around it','Configure or replace the tool to match the real process','Find out why the workaround exists before you remove it.'],
+ backup:['Data could be lost and not restored','Scheduled backups with a tested restore','A backup nobody has restored is a hope, not a backup.'],
+ access:['The wrong people can see or change the data','Role-based access, and a controlled way to share','Start with who needs what. The tool setting comes second.'],
+ audit:['Changes or compliance cannot be shown','An audit log, and records that show the rules are met','In a regulated business this can matter more than speed.'],
+ external:['The cause sits outside the team\'s control','Negotiate, escalate or plan around it','Technology can make the delay visible. It cannot remove it.'],
+ scale:['The business has outgrown the current setup','Replace or extend the platform, planned as an investment','A small patch here buys time only. Say how long.']
+};
+RC.secure=['Basic security practices are missing','Baseline security controls: a second sign-in step, updates, removal of old accounts, someone watching for unusual activity','Do the basics before buying security products.'];
+var STD={flow:'Lean waste: waiting',multi:'Lean waste: waiting',integrate:'Lean waste: excess processing',valid:'Lean waste: defects',head:'ITIL 4 practice: knowledge management',capacity:'ITIL 4 practice: capacity and performance management',backup:'ITIL 4 practice: service continuity management. NIST CSF 2.0 function: Protect',access:'ITIL 4 practice: information security management. NIST CSF 2.0 function: Protect',secure:'ITIL 4 practice: information security management',external:'ITIL 4 practice: supplier management'};
+var TREE=[
+ {id:'g1',q:'Is it unclear who owns this work, or do people do it in different ways?',y:'owner'},
+ {id:'g2',q:'Does the work depend on one person\'s unwritten knowledge?',y:'head'},
+ {id:'g3',q:'Does work sit waiting for a person or an approval?',y:'flow'},
+ {id:'g4',q:'Is the information wrong, missing, or different in different places?',y:{id:'g4a',q:'Is there more than one copy of the same information?',n:'valid',y:{id:'g4b',q:'Are the copies in two different systems that both need the data?',y:'integrate',n:'truth'}}},
+ {id:'g5',q:'Do people lose time doing the same steps by hand?',y:{id:'g5a',q:'Is the hand work mostly building reports or summaries?',y:'report',n:'manual'}},
+ {id:'g6',q:'Does the tool itself get in the way?',y:{id:'g6a',q:'Are people blocked because only one person can use it at a time?',y:'multi',n:{id:'g6b',q:'Is it slow, crashing, out of date or at its limit?',y:'capacity',n:'fit'}}},
+ {id:'g7',q:'Could data be lost, exposed, or changed with no trace?',y:{id:'g7a',q:'Is the main fear losing the data altogether?',y:'backup',n:{id:'g7b',q:'Is the fear that the wrong people can see or change it?',y:'access',n:'audit'}}},
+ {id:'g8',q:'Does part of the cause sit outside the team: a vendor, a customer, a regulator, or too few staff?',y:'external'},
+ {id:'g9',q:'Is the business trying to do something the current setup was never built for, such as more volume or a new service?',y:'scale'},
+ {id:'g10',q:'Are basic security practices missing, such as a second sign-in step, software updates or removing old accounts?',y:'secure'}
+];
+var OPTS=['Change the steps or roles and keep the current tool','Improve the tool they already have','Connect or configure tools they already own','Buy a product built for this','Build something custom'];
+var USE=[['easy','Likely: little changes for them'],['train','Needs training and someone to champion it'],['resist','Likely to be resisted']];
+var GROW=[['yes','Yes'],['no','No'],['unsure','Not sure']];
+var CASH=[['no','No. It frees capacity only'],['cut','Yes. It would cut overtime, temps or contractors'],['sell','Yes. Staff would do paid work with the time']];
+var CONF=[['10','Confirmed by the business (plus or minus 10%)'],['30','Reasonable estimate (plus or minus 30%)'],['50','Rough guess (plus or minus 50%)']];
+var SRC=[['Documents','Documents we were given'],['Interviews','What people told us'],['Our estimate','Our own estimate']];
+var SOLUTION=/\b(needs?|wants?|build|buy|get|implement|install|create|develop)\s+(an?\s+|the\s+|some\s+)?(new\s+|better\s+)?(app|apps|software|system|database|website|portal|tool|dashboard|automation)\b/i;
+
+function opt(){return {name:'',type:'',buy:'',setup:'',train:'',run:'',pct:'',use:'',grow:'',trade:''};}
+function mk(id){return {id:id,from:'',kind:'pain',text:'',who:'',whys:[],root:false,times:'',per:'week',mins:'',people:'1',src:'Our estimate',cash:'no',extra:'',riskWhat:'',riskYears:'',riskCost:'',conf:'30',tree:{},causes:[],rc:'',swap:'',opts:[opt(),opt()],pickOpt:'',whyOpt:'',measure:'',target:'',adopt:'',need:'',req:'',users:[],stories:[],how:{},day:[],store:[],screens:[]};}
+function example(){
+  var a=mk('p1');a.text='Tutoring sessions get double-booked';a.who='Front desk staff, tutors and students';
+  a.whys=[{a:'Two staff book the same slot without seeing each other\'s entry',e:'Front desk supervisor'},{a:'Each person works in their own downloaded copy',e:'Two different versions in the documents'},{a:'The shared file locks when more than one person opens it',e:''}];
+  a.times='3';a.per='week';a.mins='30';a.people='1';a.src='Interviews';a.cash='no';a.extra='300';a.riskWhat='A paying workshop group is turned away after a double-booking';a.riskYears='2';a.riskCost='600';
+  a.tree={g1:'n',g2:'n',g3:'n',g4:'y',g4a:'y',g4b:'n',g5:'n',g6:'y',g6a:'y',g7:'n',g8:'n',g9:'n',g10:'n'};a.causes=['truth','multi'];a.rc='truth';a.swap='n';
+  a.opts=[{name:'Move the sheet to one shared online workbook',type:OPTS[1],buy:'0',setup:'200',train:'100',run:'0',pct:'70',use:'easy',grow:'no'},{name:'Subscribe to a scheduling product',type:OPTS[3],buy:'0',setup:'600',train:'300',run:'900',pct:'95',use:'train',grow:'yes'}];
+  a.pickOpt='0';a.whyOpt='It removes the separate copies at almost no cost. Revisit if bookings double.';
+  a.measure='Double-bookings per week';a.target='From 3 a week to fewer than 1 a month, checked after 8 weeks';a.adopt='Front desk staff stop downloading copies. The supervisor shows them the shared file once.';
+  a.need='One current booking record that every staff member sees';a.req='two staff can book at the same moment and neither entry is lost';
+  a.opts[0].trade='Still a spreadsheet: no audit trail and no checks on bad entries';a.opts[1].trade='Costs money every year and staff must learn a new tool';
+  a.users=[{role:'Front desk staff',today:'Type bookings into their own copy and phone tutors to check times',change:'See live tutor availability and book in one place'},{role:'Tutor',today:'Confirms each session by phone',change:'Sees their own schedule without a call'}];
+  a.stories=[{as:'front desk staff member',want:'see whether a tutor is free before I confirm a booking',so:'I never double-book a session',done:'booking a taken slot shows an error and is not saved',pri:'Must'},{as:'tutor',want:'see my own schedule',so:'I do not need a phone call to confirm',done:'a tutor can open their week without asking the front desk',pri:'Should'}];
+  a.how={access:'Tutors see only their own schedule; front desk can edit all bookings',audit:'Every booking change stores the user and the time',valid:'A booking cannot be saved without a student ID'};
+  a.day=[{when:'9:00, a student calls to book',before:'Staff open their own copy, cannot tell if it is current, and phone the tutor (10 minutes)',after:'Staff see live availability and confirm in under a minute'}];
+  a.store=[{thing:'Booking',fields:'student, tutor, date, start time, length, status',rule:'A tutor cannot have two bookings that overlap'},{thing:'Tutor',fields:'name, subjects, weekly availability',rule:''}];
+  a.screens=[{name:'Day schedule',who:'Front desk staff',does:'See every tutor\'s free and booked slots and add a booking'},{name:'My week',who:'Tutor',does:'See their own bookings'}];
+  var b=mk('p2');b.text='Monthly usage report takes a full afternoon to build';b.who='Center coordinator';b.times='1';b.per='month';b.mins='240';
+  return {example:true,mode:'comp',sources:[{src:'AI chat assistant',use:'Drafted a first version of the user stories',check:'Compared each one to the evidence log and removed two with no evidence'}],process:'Booking tutoring sessions',goal:'Serve more students next term without adding front desk staff',limits:'No new budget this year. Staff are part-time students.',topic:'book a tutoring session',rate:'22',chosen:'p1',
+   steps:[{who:'Student',what:'Emails a request'},{who:'Front desk',what:'Types it into their own copy of the sheet'},{who:'Front desk',what:'Phones the tutor to check the time'},{who:'Tutor',what:'Confirms'},{who:'Front desk',what:'Emails the student'}],
+   notes:[{who:'Front desk supervisor',said:'"About three double-bookings a week. Each takes half an hour to sort out."'},{who:'Coordinator',said:'"The file locks if someone else has it open, so people save their own copy."'}],
+   checks:{copies:'y',lock:'y',retype:'u',valid:'u',one:'n',owner:'n',audit:'u',backup:'u',volume:'u'},
+   ev:{copies:'Two different versions in the documents',lock:'Coordinator: "the file locks if someone else has it open"'},problems:[a,b]};}
+function blank(){return {example:false,mode:(S&&S.mode)||'comp',sources:[],process:'',goal:'',limits:'',topic:'',rate:'',chosen:'',steps:[],notes:[],checks:{},ev:{},problems:[]};}
+
+var S=example();
+try{var raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);if(o&&Array.isArray(o.problems)&&Array.isArray(o.steps)&&Array.isArray(o.notes))S=o;}}catch(e){}
+S.sources=S.sources||[];
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function $(id){return document.getElementById(id);}
+function selectEl(id){var r=document.createRange();r.selectNodeContents($(id));var s=window.getSelection();s.removeAllRanges();s.addRange(r);}
+function set(id,html){var el=$(id);if(el)el.innerHTML=html;}
+function num(n){return Math.round(n).toLocaleString('en-US');}
+function cf(v,d){var n=parseFloat(v);return (isFinite(n)?n:d)/100;}
+function fl(v){var n=parseFloat(v);return isFinite(n)&&n>0?n:0;}
+function prob(id){for(var i=0;i<S.problems.length;i++)if(S.problems[i].id===id)return S.problems[i];return null;}
+function newId(){return 'p'+Date.now().toString(36)+Math.floor(Math.random()*1000);}
+function lab(list,v){for(var i=0;i<list.length;i++)if(list[i][0]===v)return list[i][1];return '';}
+
+/* ---------- The maths (one place, so every screen and the report agree) ---------- */
+function perYear(p){return fl(p.times)*MULT[p.per||'week'];}
+function hours(p){return perYear(p)*fl(p.mins)*fl(p.people)/60;}
+function size(p){var h=hours(p),tc=(!comp()&&p.cash&&p.cash!=='no')?h*fl(S.rate):0,dr=fl(p.extra),ry=fl(p.riskYears),rk=(!comp()&&ry>0)?fl(p.riskCost)/ry:0,bt=cf(p.confT||p.conf,30),bm=cf(p.confM||p.conf,30),br=cf(p.confR,50),b={lo:tc*(1-bt)+dr*(1-bm)+rk*(1-br),hi:tc*(1+bt)+dr*(1+bm)+rk*(1+br)};
+  return {h:h,tc:tc,dr:dr,rk:rk,cash:tc+dr+rk,b:b};}
+function optCalc(p,o){var s=size(p),pct=Math.min(fl(o.pct),100)/100,one=fl(o.buy)+fl(o.setup)+fl(o.train),run=fl(o.run),sv=s.cash*pct,net=sv-run,nLo=s.b.lo*pct-run,nHi=s.b.hi*pct-run;
+  return {one:one,run:run,sv:sv,net:net,cap:s.h*pct,pay:net>0?one/(net/12):null,best:nHi>0?one/(nHi/12):null,worst:nLo>0?one/(nLo/12):null,three:3*net-one};}
+function money(x){return (x<0?'-$':'$')+num(Math.abs(x));}
+function range(x,b){return (!x||!b||b.lo===b.hi)?money(x):money(b.lo)+' to '+money(b.hi);}
+function mo(x){return x<1?'under 1':num(x);}
+function payText(c){if(c.pay==null)return 'Never on cash alone';if(c.one===0)return 'Immediately';
+  if(c.worst==null)return 'About '+mo(c.pay)+' months, or never if savings are at the low end';
+  return mo(c.best)===mo(c.worst)?'About '+mo(c.pay)+' months':mo(c.best)+' to '+mo(c.worst)+' months';}
+
+/* ---------- Small builders ---------- */
+function pk(p,k){return 'data-p="'+p.id+'" data-k="'+k+'"';}
+function T(id,l,at,v,ph){return '<div class="field"><label for="'+id+'">'+esc(l)+'</label><input type="text" id="'+id+'" '+at+' value="'+esc(v)+'" placeholder="'+esc(ph||'')+'"></div>';}
+function N(id,l,at,v){return '<div class="field"><label for="'+id+'">'+esc(l)+'</label><input type="number" min="0" step="any" id="'+id+'" '+at+' value="'+esc(v)+'"></div>';}
+function SEL(id,l,at,opts,v,blankText){return '<div class="field"><label for="'+id+'">'+esc(l)+'</label><select id="'+id+'" '+at+'>'+(blankText?'<option value="">'+esc(blankText)+'</option>':'')+opts.map(function(o){return '<option value="'+esc(o[0])+'"'+(String(v==null?'':v)===String(o[0])?' selected':'')+'>'+esc(o[1])+'</option>';}).join('')+'</select></div>';}
+function pairs(a){return a.map(function(x){return [x,x];});}
+
+var CORE=['owner','one','wait','repeat','around','copies','retype','valid','reports','lock','slow','access','backup','audit','rules','volume'];
+function comp(){return S.mode!=='full';}
+function checksNow(){return comp()?CHECKS.filter(function(c){return CORE.indexOf(c.id)>=0;}):CHECKS;}
+function holder(h){return h==='_'?S:prob(h);}
+var FUSERS=[{k:'role',ph:'Job role'},{k:'today',ph:'What they do today'},{k:'change',ph:'What changes for them'}];
+var FSTORY=[{k:'as',ph:'As a (role)'},{k:'want',ph:'I want to (action)'},{k:'so',ph:'So that (benefit)'},{k:'done',ph:'Done when (a test)'},{k:'pri',ph:'Priority',opts:['Must','Should','Could','Not now']}];
+var FDAY=[{k:'when',ph:'Moment in the day'},{k:'before',ph:'Before'},{k:'after',ph:'After'}];
+var FSRC=[{k:'src',ph:'Tool or source'},{k:'use',ph:'What we used it for'},{k:'check',ph:'How we checked it'}];
+var FSTORE=[{k:'thing',ph:'Thing to store (for example: Booking)'},{k:'fields',ph:'Details it needs (student, tutor, time)'},{k:'rule',ph:'Rule it must obey (optional)'}];
+var FSCREEN=[{k:'name',ph:'Screen'},{k:'who',ph:'Who uses it'},{k:'does',ph:'What they do there'}];
+var HOW=[['access','Who can see and change what'],['audit','Record of who changed what, and when'],['valid','Checks that stop bad data at entry'],['connect','Other systems it must connect to'],['speed','Speed and availability'],['move','Moving the existing data across']];
+function rows(hid,name,fields){var H=holder(hid),list=H[name]||(H[name]=[]);return list.map(function(r,i){return '<div class="prow">'+fields.map(function(f){var at='id="'+name+'-'+hid+'-'+i+'-'+f.k+'" data-h="'+hid+'" data-n="'+name+'" data-i="'+i+'" data-k="'+f.k+'" aria-label="'+esc(f.ph)+'"';
+    return f.opts?'<select '+at+'>'+f.opts.map(function(o){return '<option'+(r[f.k]===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select>':'<input type="text" '+at+' value="'+esc(r[f.k])+'" placeholder="'+esc(f.ph)+'">';}).join('')+'<button type="button" class="ghost" data-rmrow="'+name+'" data-h="'+hid+'" data-i="'+i+'">Remove</button></div>';}).join('')+'<div><button type="button" class="ghost" data-addrow="'+name+'" data-h="'+hid+'">Add a row</button></div>';}
+var step='ask';
+function fromHash(){var h=(location.hash||'').replace('#','');for(var i=0;i<STEPS.length;i++)if(STEPS[i][0]===h)return h;return null;}
+function go(s){step=s;try{if(location.hash!=='#'+s)location.hash=s;}catch(e){}render();}
+function renderNav(){
+  $('nav').innerHTML=STEPS.map(function(s,i){return '<button type="button" data-step="'+s[0]+'"'+(s[0]===step?' aria-current="step"':'')+'><small>Step '+(i+1)+'</small><b>'+s[1]+'</b><small>'+s[2]+'</small></button>';}).join('');
+  $('mode').innerHTML='<div class="row" style="align-items:center"><div class="seg" role="radiogroup" aria-label="Mode">'+[['comp','Competition mode'],['full','Full vCIO mode']].map(function(o){return '<input type="radio" name="mode" id="mode-'+o[0]+'" value="'+o[0]+'" data-mode="1"'+((comp()?'comp':'full')===o[0]?' checked':'')+'><label for="mode-'+o[0]+'">'+o[1]+'</label>';}).join('')+'</div><span class="note">'+(comp()?'Trimmed for a timed challenge: 16 checks, no cost estimates.':'Everything: all 28 checks, money, risk and payback.')+'</span></div>';
+  $('banner').innerHTML=S.example?'<div class="banner"><span>You are looking at an example: a campus tutoring center that books sessions in a shared spreadsheet. Click through the steps to see how it works.</span><button type="button" class="btn" id="start-own">Start my own case</button></div>':'';}
+function footer(){var i=0;for(var k=0;k<STEPS.length;k++)if(STEPS[k][0]===step)i=k;
+  return '<hr><div class="row" style="justify-content:space-between">'+(i>0?'<button type="button" class="ghost" data-step="'+STEPS[i-1][0]+'">Back: '+STEPS[i-1][1]+'</button>':'<span></span>')+(i<STEPS.length-1?'<button type="button" class="btn" data-step="'+STEPS[i+1][0]+'">Next: '+STEPS[i+1][1]+'</button>':'<span></span>')+'</div><p class="note">Saved in this browser only. To back it up, use Copy case code in the Report step.</p>';}
+
+/* ---------- Step 1: Ask ---------- */
+function ladderHtml(){var t=(S.topic||'').trim()||'do this task';t=esc(t.replace(/[.?!]+$/,''));
+  var L=[['1 Open','Walk me through how you '+t+', start to finish.','Gets you the story. Let them talk.'],['2 Probe','What happens right after that? Who does it?','Ask this about every step they mention.'],['3 Count','How often do you '+t+'? How long does it take each time? How many people touch it?','These numbers are your evidence. Write them down exactly.'],['4 Break it','Tell me about the last time something went wrong when you tried to '+t+'. How was it found?','Real failures tell you more than opinions.'],['5 Confirm','So what I am hearing is ____. Is that right?','Say it back in your own words. They will correct you.']];
+  return L.map(function(r){return '<li><span>'+r[0]+'</span><div><q>'+r[1]+'</q><em>'+r[2]+'</em></div></li>';}).join('');}
+function handoffs(){var n=0,st=S.steps.filter(function(s){return (s.who||'').trim();});for(var i=1;i<st.length;i++)if(st[i].who.trim().toLowerCase()!==st[i-1].who.trim().toLowerCase())n++;
+  return st.length<2?'<span class="note">Add at least two steps to count the handoffs.</span>':'<span class="out">'+n+' handoff'+(n===1?'':'s')+'</span> <span class="note">across '+st.length+' steps. Each handoff is a place where work can wait or get lost, so ask about every one.</span>';}
+function wrap2(s,n){var w=String(s||'').trim().split(/\s+/),a='',b='',i=0;for(;i<w.length;i++){if((a+' '+w[i]).trim().length<=n)a=(a+' '+w[i]).trim();else break;}b=w.slice(i).join(' ');if(!a){a=b.slice(0,n);b=b.slice(n);}if(b.length>n)b=b.slice(0,n-1)+'…';return [a,b];}
+function mapSvg(){var st=S.steps.filter(function(s){return (s.who||'').trim();});if(st.length<2)return '';
+  var lanes=[],key=function(s){return s.who.trim().toLowerCase();};st.forEach(function(s){if(lanes.indexOf(key(s))<0)lanes.push(key(s));});
+  var LW=120,CW=160,BW=136,BH=44,LH=68,W=LW+st.length*CW+8,H=lanes.length*LH+2,h='',n=0;
+  var cx=function(i){return LW+i*CW+CW/2;},cy=function(i){return 1+lanes.indexOf(key(st[i]))*LH+LH/2;};
+  lanes.forEach(function(k,j){var name='';st.forEach(function(s){if(!name&&key(s)===k)name=s.who.trim();});if(name.length>15)name=name.slice(0,14)+'…';
+    h+='<rect class="m-lane" x="1" y="'+(1+j*LH)+'" width="'+(W-2)+'" height="'+LH+'"/><text class="m-l" x="10" y="'+(1+j*LH+LH/2+4)+'">'+esc(name)+'</text>';});
+  for(var i=1;i<st.length;i++){var same=key(st[i])===key(st[i-1]);if(!same)n++;
+    var d=same?'M'+(cx(i-1)+BW/2)+' '+cy(i)+'H'+(cx(i)-BW/2):'M'+(cx(i-1)+BW/2)+' '+cy(i-1)+'H'+cx(i)+'V'+(cy(i)+(cy(i)>cy(i-1)?-BH/2:BH/2));
+    h+='<path class="'+(same?'m-a':'m-h')+'" d="'+d+'" marker-end="url(#'+(same?'ma':'mh')+')"/>';}
+  st.forEach(function(s,i){var t=wrap2(s.what||'(step)',18);h+='<rect class="m-box" x="'+(cx(i)-BW/2)+'" y="'+(cy(i)-BH/2)+'" width="'+BW+'" height="'+BH+'" rx="6"/>'+(t[1]?'<text class="m-t" text-anchor="middle" x="'+cx(i)+'" y="'+(cy(i)-3)+'">'+esc(t[0])+'</text><text class="m-t" text-anchor="middle" x="'+cx(i)+'" y="'+(cy(i)+13)+'">'+esc(t[1])+'</text>':'<text class="m-t" text-anchor="middle" x="'+cx(i)+'" y="'+(cy(i)+5)+'">'+esc(t[0])+'</text>');});
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Process map: '+st.length+' steps, '+lanes.length+' roles, '+n+' handoffs"><defs><marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-ah" d="M0 0L10 5L0 10z"/></marker><marker id="mh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path class="m-hh" d="M0 0L10 5L0 10z"/></marker></defs>'+h+'</svg>';}
+function listHtml(l,k1,k2,ph1,ph2){return S[l].map(function(r,i){return '<div class="lrow"><input type="text" id="'+l+'-'+i+'-a" data-l="'+l+'" data-i="'+i+'" data-k="'+k1+'" value="'+esc(r[k1])+'" placeholder="'+ph1+'" aria-label="'+ph1+'"><input type="text" id="'+l+'-'+i+'-b" data-l="'+l+'" data-i="'+i+'" data-k="'+k2+'" value="'+esc(r[k2])+'" placeholder="'+ph2+'" aria-label="'+ph2+'"><button type="button" class="ghost" data-rml="'+l+'" data-i="'+i+'">Remove</button></div>';}).join('');}
+function renderAsk(){
+  return '<div class="stack"><h2>Understand the business before the problem</h2><p>A fix is only right if it serves what the business is trying to do. Write that down first, then ask how the work really happens. Never mention your solution.</p></div>'+
+  '<div class="stack">'+T('process','What process are you investigating?','data-s="process"',S.process,'Example: booking tutoring sessions')+T('goal','What is the business trying to achieve?','data-s="goal"',S.goal,'Example: serve more students without adding staff')+T('limits','What cannot change? (budget, staff, deadlines, systems, outside rules)','data-s="limits"',S.limits,'Example: no new budget this year')+'</div>'+
+  '<div class="stack"><h3>Five questions for any task</h3>'+T('topic','Finish this sentence: "Walk me through how you…"','data-s="topic"',S.topic,'Example: book a tutoring session')+'<ol class="ladder" id="ladder">'+ladderHtml()+'</ol></div>'+
+  '<div class="stack"><h3>Questions about the business</h3><ul class="plain">'+BIZ.map(function(q){return '<li><span>'+esc(q)+'</span></li>';}).join('')+'</ul></div>'+
+  '<div class="stack"><h3>Clue phrases</h3><p class="note">When you hear one of these, stop and ask the follow-up. Tap a phrase to see what it means.</p><div>'+CLUES.map(function(c){return '<details><summary>'+esc(c[0])+'</summary><p><b>It usually means:</b> '+esc(c[1])+'</p><p><b>Ask next:</b> '+esc(c[2])+'</p></details>';}).join('')+'</div></div>'+
+  '<div class="stack"><h3>Map the steps</h3><p class="note">List each step in order and who does it. The tool counts the handoffs.</p><div class="stack" id="l-steps">'+listHtml('steps','who','what','Who does it','What they do')+'</div><div class="row"><button type="button" class="ghost" data-addl="steps">Add a step</button><span id="handoffs">'+handoffs()+'</span></div><div id="map" class="scroll">'+mapSvg()+'</div><p class="note">The map draws itself from your list. Thicker arrows are handoffs between people.</p></div>'+
+  '<div class="stack"><h3>Evidence log</h3><p class="note">Write down what people said, in their words, and every number you were given. You will cite these later.</p><div class="stack" id="l-notes">'+listHtml('notes','who','said','Who said it, or which document','What they said, or the number')+'</div><div><button type="button" class="ghost" data-addl="notes">Add evidence</button></div></div>';}
+
+/* ---------- Step 2: Check ---------- */
+function checkOut(){var ask=[],yes=[];checksNow().forEach(function(c){var v=S.checks[c.id];if(v==='u')ask.push(c);if(v==='y')yes.push(c);});var h='';
+  if(ask.length)h+='<div class="stack"><h3>Questions to go and ask</h3><ul class="plain">'+ask.map(function(c){return '<li><span>'+esc(c.q)+'</span></li>';}).join('')+'</ul></div>';
+  if(yes.length)h+='<div class="stack"><h3>Possible problems you found</h3><ul class="plain">'+yes.map(function(c){var added=S.problems.some(function(p){return p.from===c.id;});return '<li><span>'+esc(c.p)+'</span><button type="button" class="ghost" data-add="'+c.id+'"'+(added?' disabled':'')+'>'+(added?'On your problem list':'Add to problem list')+'</button></li>';}).join('')+'</ul></div>';
+  if(!ask.length&&!yes.length)h='<p class="note">Answer the checks above. Your questions and possible problems will appear here.</p>';return h;}
+function renderCheck(){
+  return '<div class="stack"><h2>Scan six areas, not only the tool</h2><p>Most business problems that look like technology problems start somewhere else. Answer from what you have read and heard. "Don\'t know" is a useful answer: it becomes a question to ask.</p></div><div>'+
+  checksNow().map(function(c,i,L){var v=S.checks[c.id]||'',hd=(i===0||L[i-1].area!==c.area)?'<h3 class="area">'+c.area+'</h3>'+(c.area==='Security baseline'?'<p class="note">A baseline scan only. The tag on each check is the NIST Cybersecurity Framework 2.0 function it belongs to. It does not replace a security assessment.</p>':''):'';
+    return hd+'<div class="check"><div id="lab-'+c.id+'">'+esc(c.t)+(c.f?' <span class="tag">['+c.f+']</span>':'')+'</div><div class="seg" role="radiogroup" aria-labelledby="lab-'+c.id+'">'+[['y','Yes'],['n','No'],['u',"Don't know"]].map(function(o){var id='c-'+c.id+'-'+o[0];return '<input type="radio" name="c-'+c.id+'" id="'+id+'" value="'+o[0]+'" data-check="'+c.id+'"'+(v===o[0]?' checked':'')+'><label for="'+id+'">'+o[1]+'</label>';}).join('')+
+    '</div><div class="ev"><input type="text" id="ev-'+c.id+'" data-ev="'+c.id+'" value="'+esc(S.ev[c.id]||'')+'" placeholder="How do you know? (document, or who said it)" aria-label="Evidence for: '+esc(c.t)+'"></div></div>';}).join('')+
+  '</div><div id="check-out" class="stack">'+checkOut()+'</div>';}
+
+/* ---------- Step 3: Dig ---------- */
+function hintFor(p){return SOLUTION.test(p.text||'')?'<span class="hint">This sounds like a solution. Describe what goes wrong, or what the business cannot do, instead.</span>':'';}
+function whyNote(p){if(!p.whys.length)return '<span class="hint">No "why" yet. Right now this is only a symptom.</span>';
+  var miss=p.whys.filter(function(w){return (w.a||'').trim()&&!(w.e||'').trim();}).length;
+  return miss?'<span class="hint">'+miss+' answer'+(miss>1?'s have':' has')+' no evidence. Go and ask, or say plainly that it is your guess.</span>':'<span class="ok">Every answer has evidence.</span>';}
+function renderDig(){
+  var h='<div class="stack"><h2>Trace each problem toward its causes</h2><p>What people complain about is the error message, not the bug. Keep asking "why does that happen?" This chain finds one line of cause. The Fix step then checks for others, because most problems have more than one.</p></div>';
+  if(!S.problems.length)h+='<p class="note">No problems on your list yet. Add one below, or go back to Check and add the ones you found.</p>';
+  h+=S.problems.map(function(p,i){return '<div class="prob"><span class="tag">PROBLEM '+(i+1)+'</span>'+
+    SEL('kd-'+p.id,'What kind of problem is it?',pk(p,'kind'),[['pain','Something goes wrong today'],['gap','Something the business cannot do yet']],p.kind)+
+    '<div class="field"><label for="t-'+p.id+'">What goes wrong, or what can the business not do?</label><textarea id="t-'+p.id+'" rows="2" '+pk(p,'text')+'>'+esc(p.text)+'</textarea><span id="h-'+p.id+'">'+hintFor(p)+'</span></div>'+
+    T('w-'+p.id,'Who feels it?',pk(p,'who'),p.who,'Job roles, not names')+
+    '<div class="stack"><span class="lab">Why does that happen? Each answer becomes the next question.</span>'+
+    p.whys.map(function(w,j){return '<div class="why"><i>'+(j+1)+'</i><input type="text" id="a-'+p.id+'-'+j+'" data-p="'+p.id+'" data-w="'+j+'" data-k="a" value="'+esc(w.a)+'" placeholder="Because…" aria-label="Why '+(j+1)+'"><input class="w-ev" type="text" id="e-'+p.id+'-'+j+'" data-p="'+p.id+'" data-w="'+j+'" data-k="e" value="'+esc(w.e)+'" placeholder="Evidence: who said it, or which document" aria-label="Evidence for why '+(j+1)+'"><button type="button" class="ghost w-rm" data-rmwhy="'+p.id+'" data-w="'+j+'" aria-label="Remove why '+(j+1)+'">Remove</button></div>';}).join('')+
+    '<div class="row"><button type="button" class="ghost" data-addwhy="'+p.id+'"'+(p.whys.length>=5?' disabled':'')+'>'+(p.whys.length?'Ask why again':'Ask why')+'</button><span id="n-'+p.id+'">'+whyNote(p)+'</span></div></div>'+
+    (p.whys.length?'<label class="tick"><input type="checkbox" id="r-'+p.id+'" data-root="'+p.id+'"'+(p.root?' checked':'')+'><span>We checked: if only the last answer were fixed, most of this problem would stop.</span></label>':'')+
+    '<div class="row" style="justify-content:flex-end"><button type="button" class="ghost danger" data-del="'+p.id+'">Delete this problem</button></div></div>';}).join('');
+  return h+'<div><button type="button" class="btn" id="add-prob">Add a problem</button></div>';}
+
+/* ---------- Step 4: Size ---------- */
+function sizeOut(p){var s=size(p),h='<div class="box">';
+  h+='<span>Capacity lost: <span class="out">'+num(s.h)+' hours</span> a year.</span>';
+  if(s.h)h+=!comp()&&p.cash&&p.cash!=='no'?(fl(S.rate)?'<span>That time is worth about <span class="out">'+money(s.tc)+'</span> a year in cash, because you said it is paid for or would be resold.</span>':'<span class="hint">Enter the hourly staff cost above to turn that time into cash.</span>'):'<span class="note">Not counted as cash. Freed time only becomes money if it cuts overtime or is resold, so it is reported as capacity.</span>';
+  if(s.dr)h+='<span>Money lost directly: <span class="out">'+money(s.dr)+'</span> a year.</span>';
+  if(s.rk)h+='<span>Risk: about <span class="out">'+money(s.rk)+'</span> a year on average ('+money(fl(p.riskCost))+' once every '+num(fl(p.riskYears))+' year'+(fl(p.riskYears)===1?'':'s')+').</span>';
+  h+='<span><b>Cash at stake: <span class="out">'+range(s.cash,s.b)+'</span> a year</b>'+(s.cash?', given how sure you are of the numbers.':'. Add direct losses or a risk if there are any.')+'</span>';
+  return h+'</div>';}
+function ranked(){return S.problems.map(function(p){return {p:p,s:size(p)};}).sort(function(a,b){return (b.s.cash-a.s.cash)||(b.s.h-a.s.h);});}
+function rankHtml(){var l=ranked();if(!l.length)return '<p class="note">Add problems in the Dig step first.</p>';
+  return '<div class="scroll"><table><thead><tr><th>Problem</th><th>Cash at stake a year</th><th>Capacity lost a year</th></tr></thead><tbody>'+l.map(function(x){return '<tr><td>'+esc(x.p.text||'Untitled problem')+'</td><td class="n">'+range(x.s.cash,x.s.b)+'</td><td class="n">'+num(x.s.h)+' h</td></tr>';}).join('')+'</tbody></table></div>';}
+function renderSize(){
+  var h='<div class="stack"><h2>Size each problem three ways</h2><p>Time, money and risk are different things, so this step keeps them apart. Saved time is only cash if the business would actually spend less or earn more because of it.</p></div>';
+  if(!comp())h+='<div style="max-width:340px">'+N('rate','Hourly cost of a staff member ($)','data-s="rate"',S.rate)+'</div>';
+  h+=S.problems.map(function(p,i){return '<div class="prob"><span class="tag">PROBLEM '+(i+1)+'</span><strong>'+esc(p.text||'Untitled problem')+'</strong>'+
+    '<span class="lab">Time</span><div class="row">'+N('ct-'+p.id,'How many times',pk(p,'times'),p.times)+SEL('cp-'+p.id,'per',pk(p,'per'),pairs(['day','week','month','year']),p.per||'week')+N('cm-'+p.id,'Minutes lost each time',pk(p,'mins'),p.mins)+N('cn-'+p.id,'People involved',pk(p,'people'),p.people)+'</div>'+
+    (comp()?'':SEL('ch-'+p.id,'If that time were freed, would the business spend less or earn more?',pk(p,'cash'),CASH,p.cash||'no'))+
+    '<span class="lab">Money</span>'+N('cx-'+p.id,'Money lost directly each year ($): refunds, fines, rework paid for, lost sales',pk(p,'extra'),p.extra)+
+    '<span class="lab">Risk</span>'+T('rw-'+p.id,'What bad event could this problem cause?',pk(p,'riskWhat'),p.riskWhat,'Example: a failed audit, lost records, a lost customer')+
+    (comp()?'':'<div class="row">'+N('ry-'+p.id,'It could happen about once every ___ years',pk(p,'riskYears'),p.riskYears)+N('rc-'+p.id,'Cost if it happens ($)',pk(p,'riskCost'),p.riskCost)+'</div>')+
+    '<div class="row">'+SEL('cs-'+p.id,'Where the numbers come from',pk(p,'src'),SRC,p.src||'Our estimate')+SEL('ft-'+p.id,'How sure of the time numbers?',pk(p,'confT'),CONF,p.confT||p.conf||'30')+SEL('fm-'+p.id,'How sure of the direct losses?',pk(p,'confM'),CONF,p.confM||p.conf||'30')+(comp()?'':SEL('fr-'+p.id,'How sure of the risk numbers?',pk(p,'confR'),CONF,p.confR||'50'))+'</div>'+
+    '<div id="sz-'+p.id+'">'+sizeOut(p)+'</div></div>';}).join('');
+  return h+'<div class="stack"><h3>Ranked by cash at stake, then by capacity</h3><div id="rank">'+rankHtml()+'</div><p class="note">The ranking is a starting point. A problem that blocks the business goal can matter more than one that costs more.</p></div>';}
+
+/* ---------- Step 5: Fix ---------- */
+function chosen(){var p=prob(S.chosen);if(p)return p;var l=ranked();return l.length?l[0].p:null;}
+function walk(p){var t=p.tree||{},trail=[],causes=[],cur=null;
+  for(var i=0;i<TREE.length&&!cur;i++){var g=TREE[i],a=t[g.id];if(!a){cur=g;break;}trail.push([g.q,a]);
+    if(a==='y'){var node=g.y;while(typeof node==='object'){var b=t[node.id];if(!b){cur=node;break;}trail.push([node.q,b]);node=node[b];}if(!cur)causes.push(node);}}
+  return {trail:trail,causes:causes,cur:cur,done:!cur};}
+function treeHtml(p){var w=walk(p),h='';
+  if(w.trail.length)h+='<ol class="trail">'+w.trail.map(function(t){return '<li><span>'+esc(t[0])+'</span><b>'+(t[1]==='y'?'Yes':'No')+'</b></li>';}).join('')+'</ol>';
+  if(w.cur)h+='<div class="box"><strong>'+esc(w.cur.q)+'</strong><div class="row"><button type="button" class="btn" data-tree="y" data-node="'+w.cur.id+'" data-tp="'+p.id+'">Yes</button><button type="button" class="btn" data-tree="n" data-node="'+w.cur.id+'" data-tp="'+p.id+'">No</button></div></div>';
+  else if(w.causes.length)h+='<p class="ok">The tree found '+w.causes.length+' cause type'+(w.causes.length>1?'s':'')+': '+w.causes.map(function(k){return esc(RC[k][0]);}).join('; ')+'.</p>';
+  else h+='<p class="hint">You answered no to every branch, so none of the 17 cause types fits. Go back to Dig and ask "why" once more, or pick the closest type yourself below.</p>';
+  if(w.trail.length)h+='<div><button type="button" class="ghost" data-treereset="'+p.id+'">Start the tree over</button></div>';return h;}
+function fixOut(p){var r=RC[p.rc],others=(p.causes||[]).filter(function(k){return k!==p.rc&&RC[k];});
+  if(!r)return '<p class="note">Choose the primary cause to see what kind of fix matches it.</p>';
+  var h='<div class="box"><span class="lab">Kind of fix that matches the primary cause</span><strong>'+esc(r[1])+'</strong><span>'+esc(r[2])+'</span>'+(STD[p.rc]?'<span class="note">Standard term for this cause. '+esc(STD[p.rc])+'</span>':'');
+  if(others.length)h+='<span class="lab" style="margin-top:6px">Also contributing, so your fix should not ignore them</span>'+others.map(function(k){return '<span>'+esc(RC[k][0])+': '+esc(RC[k][1].charAt(0).toLowerCase()+RC[k][1].slice(1))+'.</span>';}).join('');
+  return h+'</div>';}
+function swapOut(p){return p.swap==='y'?'<span class="hint">Then part of the cause is in the people or the steps. Include that in your fix, or new technology will fail the same way.</span>':p.swap==='n'?'<span class="ok">Then technology is a fair fix for this cause.</span>':p.swap==='u'?'<span class="hint">Ask yourselves what people would still do the same way with a new tool.</span>':'';}
+function cmpComp(p){var s=size(p),tr='<tr><td><b>Do nothing</b></td><td class="n">0%</td><td class="n">0 h</td><td></td><td></td><td>The problem continues: '+num(s.h)+' hours lost every year</td></tr>'+p.opts.map(function(o,i){var c=optCalc(p,o);return '<tr><td><b>'+esc(o.name||'Option '+(i+1))+'</b></td><td class="n">'+num(Math.min(fl(o.pct),100))+'%</td><td class="n">'+num(c.cap)+' h</td><td>'+esc(lab(USE,o.use).split(':')[0])+'</td><td>'+esc(lab(GROW,o.grow))+'</td><td>'+esc(o.trade||'')+'</td></tr>';}).join('');
+  return '<div class="scroll"><table><thead><tr><th>Option</th><th>Share of problem removed</th><th>Capacity freed a year</th><th>Will people use it?</th><th>Fits if work doubles?</th><th>Main tradeoff</th></tr></thead><tbody>'+tr+'</tbody></table></div>';}
+function cmpHtml(p){if(comp())return cmpComp(p);var s=size(p),rows='<tr><td><b>Do nothing</b></td><td class="n">$0</td><td class="n">$0</td><td class="n">'+money(0)+'</td><td class="n">0 h</td><td>The problem keeps costing '+range(s.cash,s.b)+' and '+num(s.h)+' hours every year</td><td></td></tr>';
+  rows+=p.opts.map(function(o,i){var c=optCalc(p,o),fl2=[];if(o.use)fl2.push('Use: '+lab(USE,o.use).split(':')[0].toLowerCase());if(o.grow)fl2.push('Fits growth: '+lab(GROW,o.grow).toLowerCase());
+    return '<tr><td><b>'+esc(o.name||'Option '+(i+1))+'</b></td><td class="n">'+money(c.one)+'</td><td class="n">'+money(c.run)+'</td><td class="n">'+money(c.sv)+'</td><td class="n">'+num(c.cap)+' h</td><td>'+payText(c)+'<br><span class="note">Three-year cash result: '+money(c.three)+'</span></td><td>'+esc(fl2.join('. '))+'</td></tr>';}).join('');
+  return '<div class="scroll"><table><thead><tr><th>Option</th><th>One-time cost</th><th>Yearly cost</th><th>Cash saved a year</th><th>Capacity freed a year</th><th>Payback on cash</th><th>Flags</th></tr></thead><tbody>'+rows+'</tbody></table></div>';}
+function renderFix(){
+  var p=chosen(),h='<div class="stack"><h2>Find the causes, then compare ways to fix them</h2><p>Name the type of cause first, the kind of fix second and a product last. Then compare real options against doing nothing. Pick the option that best removes the primary cause and fits where the business is going, and be ready to say why the others lose.</p></div>';
+  if(!p)return h+'<p class="note">You have no problems on your list yet. Add one in the Dig step.</p>';
+  var w=walk(p),whys=p.whys.filter(function(x){return (x.a||'').trim();}),root=whys.length?whys[whys.length-1].a:'',keys=(w.done&&w.causes.length)?w.causes:Object.keys(RC);
+  h+='<div class="field"><label for="pick">Problem to fix</label><select id="pick">'+S.problems.map(function(q){return '<option value="'+q.id+'"'+(q.id===p.id?' selected':'')+'>'+esc(q.text||'Untitled problem')+'</option>';}).join('')+'</select></div>';
+  h+=root?'<p><span class="lab">Cause you traced in Dig:</span> '+esc(root)+'</p>':'<p class="hint">You have not traced a cause for this problem. Go back to Dig first.</p>';
+  h+='<div class="stack"><h3>1. Cause tree</h3><p class="note">Answer yes or no. The tree checks all ten branches, so it can find more than one cause. The 17 cause types are a teaching aid, not an industry standard. Where one matches a Lean, ITIL 4 or NIST term, the tool shows it.</p><div id="tree" class="stack">'+treeHtml(p)+'</div></div>';
+  h+=SEL('rc-'+p.id,'2. Primary cause: the one that, if fixed, would remove most of the problem',pk(p,'rc'),keys.map(function(k){return [k,RC[k][0]];}),p.rc,'Choose one');
+  h+='<div id="fix-out">'+fixOut(p)+'</div>';
+  h+='<div class="stack"><span class="lab" id="swap-lab">3. Software test: imagine perfect software replaced the current tool, but the same people followed the same steps. Would the problem remain?</span><div><div class="seg" role="radiogroup" aria-labelledby="swap-lab">'+[['y','Yes, it would remain'],['n','No, it would go away'],['u','Not sure']].map(function(o){var id='sw-'+p.id+'-'+o[0];return '<input type="radio" name="sw-'+p.id+'" id="'+id+'" value="'+o[0]+'" data-swap="'+p.id+'"'+(p.swap===o[0]?' checked':'')+'><label for="'+id+'">'+o[1]+'</label>';}).join('')+'</div></div><span id="swap-out">'+swapOut(p)+'</span></div>';
+  h+='<div class="stack"><h3>4. Options</h3><p class="note">Describe at least two real options'+(comp()?', and make one of them improving the current tool, so you can say why you ruled it in or out.':'. Count every cost, including setup, moving the data and training. Costs are your estimates, so say so.')+'</p>'+
+   p.opts.map(function(o,i){var at=function(k){return 'data-p="'+p.id+'" data-o="'+i+'" data-k="'+k+'"';},id=function(k){return 'o'+i+'-'+k+'-'+p.id;};
+    return '<div class="prob"><span class="tag">OPTION '+(i+1)+'</span>'+T(id('name'),'What is it?',at('name'),o.name,'Describe it without a product name if you can')+SEL(id('type'),'What kind of change is it?',at('type'),pairs(OPTS),o.type,'Choose one')+
+     (comp()?'':'<div class="row">'+N(id('buy'),'Purchase or licences, one time ($)',at('buy'),o.buy)+N(id('setup'),'Setup and moving the data ($)',at('setup'),o.setup)+N(id('train'),'Training ($)',at('train'),o.train)+N(id('run'),'Running cost each year ($)',at('run'),o.run)+'</div>')+
+     '<div class="row">'+N(id('pct'),'Share of the problem it removes (%)',at('pct'),o.pct)+SEL(id('use'),'Will people actually use it?',at('use'),USE,o.use,'Choose one')+SEL(id('grow'),'Would it still fit if the work doubled?',at('grow'),GROW,o.grow,'Choose one')+'</div>'+T(id('trade'),'Main tradeoff: what do you give up by choosing this?',at('trade'),o.trade||'','Every option gives something up')+
+     (p.opts.length>2?'<div class="row" style="justify-content:flex-end"><button type="button" class="ghost danger" data-rmopt="'+p.id+'" data-i="'+i+'">Remove this option</button></div>':'')+'</div>';}).join('')+
+   '<div><button type="button" class="ghost" data-addopt="'+p.id+'"'+(p.opts.length>=3?' disabled':'')+'>Add a third option</button></div>'+
+   '<div id="cmp">'+cmpHtml(p)+'</div>'+(comp()?'':'<p class="note">Cash saved counts direct losses and risk, plus time only where you said it turns into money. Payback is shown as a span because your numbers are estimates.</p>')+'</div>';
+  h+='<div class="stack"><h3>5. Recommendation</h3>'+SEL('po-'+p.id,'Which option do you recommend?',pk(p,'pickOpt'),[['none','Do nothing for now']].concat(p.opts.map(function(o,i){return [String(i),o.name||'Option '+(i+1)];})),p.pickOpt,'Choose one')+T('wo-'+p.id,'Why this one and not the others?',pk(p,'whyOpt'),p.whyOpt,'Whoever pays for it will ask this')+'</div>';
+  h+='<div class="stack"><h3>6. Make it stick</h3>'+T('ad-'+p.id,'Who has to work differently, and what will they need?',pk(p,'adopt'),p.adopt,'Most fixes fail because people do not change how they work')+T('ms-'+p.id,'How will you know it worked? Name one thing you can count.',pk(p,'measure'),p.measure,'Example: double-bookings per week')+T('tg-'+p.id,'From what, to what, by when?',pk(p,'target'),p.target,'Example: from 3 a week to fewer than 1 a month, checked after 8 weeks')+'</div>';
+  h+='<div class="stack"><h3>7. Say it precisely</h3><p class="note">A need has no technology words in it. A requirement can be tested.</p>'+T('nd-'+p.id,'Business need',pk(p,'need'),p.need,'Example: one current booking record that every staff member sees')+T('rq-'+p.id,'Requirement: it is done when…',pk(p,'req'),p.req,'Example: two staff can book at the same moment and neither entry is lost')+'</div>';
+  h+='<div class="stack"><h3>8. Who uses it</h3>'+rows(p.id,'users',FUSERS)+'</div>';
+  h+='<div class="stack"><h3>9. What it must do</h3><p class="note">One user story per row, each with a test that proves it is done. Keep the Must list short.</p>'+rows(p.id,'stories',FSTORY)+'</div>';
+  h+='<div class="stack"><h3>10. How it must work</h3><p class="note">Fill in the ones that matter for this case. Leave the rest blank.</p>'+HOW.map(function(k){return T('hw-'+k[0]+'-'+p.id,k[1],'data-p="'+p.id+'" data-how="'+k[0]+'"',(p.how||{})[k[0]]||'','');}).join('')+'</div>';
+  h+='<div class="stack"><h3>11. Before and after: a day in the life</h3><p class="note">Follow one user through the same task, before and after your solution.</p>'+rows(p.id,'day',FDAY)+'</div>';
+  h+='<div class="stack"><h3>12. What it must store</h3><p class="note">List each kind of thing the solution keeps track of, the details it needs, and any rule it must obey. This is the start of a data model.</p>'+rows(p.id,'store',FSTORE)+'</div>';
+  h+='<div class="stack"><h3>13. Screens</h3><p class="note">List the screens a user would see. Sketch each one on paper or in a mockup tool.</p>'+rows(p.id,'screens',FSCREEN)+'</div>';
+  return h;}
+
+/* ---------- Step 6: Report ---------- */
+function ticket(p){var whys=p.whys.filter(function(w){return (w.a||'').trim();}),s=size(p),L=[];
+  L.push('BUSINESS BUG REPORT','Process:         '+(S.process||'(not named yet)'),'Business goal:   '+(S.goal||'(not stated yet)'));
+  if((S.limits||'').trim())L.push('Limits:          '+S.limits.trim());
+  L.push('','PROBLEM','Summary:         '+(p.text||'(not written yet)'),'Kind:            '+(p.kind==='gap'?'something the business cannot do yet':'something that goes wrong today'),'Who feels it:    '+(p.who||'(not identified yet)'));
+  L.push('','CAUSES','Traced by asking why:');
+  if(whys.length)whys.forEach(function(w,i){L.push('  '+(i+1)+'. '+w.a.trim()+'  ['+((w.e||'').trim()?'evidence: '+w.e.trim():'our guess, no evidence yet')+']');});else L.push('  (no "why" answers yet)');
+  L.push('Primary cause:   '+(RC[p.rc]?RC[p.rc][0]:'(not chosen yet)'));
+  var others=(p.causes||[]).filter(function(k){return k!==p.rc&&RC[k];});if(others.length)L.push('Also contributing: '+others.map(function(k){return RC[k][0];}).join('; '));
+  if(RC[p.rc])L.push('Kind of fix:     '+RC[p.rc][1]);
+  if(STD[p.rc])L.push('Standard term:   '+STD[p.rc]);
+  if(p.swap)L.push('Software test:   '+{y:'the problem would remain even with perfect software, so people or steps must change too',n:'the problem would go away with the right tool',u:'not sure yet'}[p.swap]);
+  L.push('','SIZE (numbers from: '+lab(SRC,p.src||'Our estimate').toLowerCase()+'; each range reflects how sure the team is of that number)');
+  L.push('Capacity lost:   '+(s.h?'about '+num(s.h)+' hours a year ('+num(perYear(p))+' times a year)':'(not measured yet)'));
+  if(s.tc)L.push('Time as cash:    about '+money(s.tc)+' a year at '+money(fl(S.rate))+' an hour');else if(s.h)L.push('Time as cash:    not counted; freed time is capacity, not money');
+  if(s.dr)L.push('Direct losses:   about '+money(s.dr)+' a year');
+  if(s.rk)L.push('Risk:            '+((p.riskWhat||'').trim()||'a bad event')+'; about '+money(s.rk)+' a year on average');else if(comp()&&(p.riskWhat||'').trim())L.push('Worst outcome:   '+p.riskWhat.trim());
+  L.push('Cash at stake:   '+range(s.cash,s.b)+' a year');
+  L.push('','OPTIONS COMPARED','  Do nothing: the problem keeps costing '+range(s.cash,s.b)+' and '+num(s.h)+' hours every year.');
+  p.opts.forEach(function(o,i){if(!(o.name||'').trim())return;var c=optCalc(p,o);
+    L.push('  '+(i+1)+'. '+o.name.trim()+(o.type?' ('+o.type.toLowerCase()+')':''));
+    if(comp())L.push('     removes '+num(Math.min(fl(o.pct),100))+'% of the problem and frees '+num(c.cap)+' hours a year');else{L.push('     costs '+money(c.one)+' once and '+money(c.run)+' a year; removes '+num(Math.min(fl(o.pct),100))+'% of the problem');
+    L.push('     saves '+money(c.sv)+' cash and frees '+num(c.cap)+' hours a year; payback: '+payText(c).toLowerCase());}
+    if((o.trade||'').trim())L.push('     tradeoff: '+o.trade.trim());
+    var f=[];if(o.use)f.push('use: '+lab(USE,o.use).toLowerCase());if(o.grow)f.push('fits if work doubles: '+lab(GROW,o.grow).toLowerCase());if(f.length)L.push('     '+f.join('; '));});
+  L.push('','RECOMMENDATION');
+  var pick=p.pickOpt==='none'?'Do nothing for now':(p.opts[+p.pickOpt]&&p.pickOpt!==''?(p.opts[+p.pickOpt].name||'Option '+(+p.pickOpt+1)):'(not chosen yet)');
+  L.push('We recommend:    '+pick);
+  if((p.whyOpt||'').trim())L.push('Because:         '+p.whyOpt.trim());
+  if((p.need||'').trim())L.push('Business need:   '+p.need.trim());
+  if((p.req||'').trim())L.push('Done when:       '+p.req.trim());
+  if((p.adopt||'').trim())L.push('Who must change: '+p.adopt.trim());
+  if((p.measure||'').trim())L.push('Measure:         '+p.measure.trim());
+  if((p.target||'').trim())L.push('Target:          '+p.target.trim());
+  var us=(p.users||[]).filter(function(u){return (u.role||'').trim();});if(us.length){L.push('','WHO USES IT');us.forEach(function(u){L.push('  '+u.role.trim()+': today, '+((u.today||'').trim()||'(not described)')+'; after, '+((u.change||'').trim()||'(not described)'));});}
+  var ss=(p.stories||[]).filter(function(x){return (x.want||'').trim();});if(ss.length){L.push('','WHAT IT MUST DO');ss.forEach(function(x){L.push('  ['+(x.pri||'Must')+'] As a '+((x.as||'').trim()||'user')+', I want to '+x.want.trim()+((x.so||'').trim()?' so that '+x.so.trim():'')+'.'+((x.done||'').trim()?' Done when '+x.done.trim()+'.':''));});}
+  var hw=HOW.filter(function(k){return ((p.how||{})[k[0]]||'').trim();});if(hw.length){L.push('','HOW IT MUST WORK');hw.forEach(function(k){L.push('  '+k[1]+': '+p.how[k[0]].trim());});}
+  var dy=(p.day||[]).filter(function(x){return (x.when||'').trim();});if(dy.length){L.push('','A DAY IN THE LIFE');dy.forEach(function(x){L.push('  '+x.when.trim(),'    before: '+((x.before||'').trim()||'(blank)'),'    after:  '+((x.after||'').trim()||'(blank)'));});}
+  var sr=(S.sources||[]).filter(function(x){return (x.src||'').trim();});if(sr.length){L.push('','AI USE AND SOURCES');sr.forEach(function(x){L.push('  '+x.src.trim()+': '+((x.use||'').trim()||'(use not stated)')+'; checked by: '+((x.check||'').trim()||'(not stated)'));});}
+  L.push((comp()?'Numbers are estimates unless marked confirmed.':'All costs and savings are estimates.')+' Evidence items logged: '+S.notes.filter(function(n){return (n.said||'').trim();}).length+'.');
+  return L.join('\n');}
+function gaps(p){var g=[],whys=p.whys.filter(function(w){return (w.a||'').trim();}),s=size(p),named=p.opts.filter(function(o){return (o.name||'').trim();});
+  if(!(S.goal||'').trim())g.push('State what the business is trying to achieve (Ask step). A fix cannot be judged without it.');
+  if(!(p.text||'').trim())g.push('Write what goes wrong (Dig step).');
+  if(SOLUTION.test(p.text||''))g.push('Your summary names a solution. Describe the problem only.');
+  if(!(p.who||'').trim())g.push('Say who feels the problem (Dig step).');
+  if(!whys.length)g.push('Ask "why" at least once. Right now you only have a symptom.');
+  var miss=whys.filter(function(w){return !(w.e||'').trim();}).length;if(miss)g.push(miss+' "why" answer'+(miss>1?'s have':' has')+' no evidence. Get it, or say plainly that it is your guess.');
+  if(!s.h&&!s.cash)g.push('Size the problem (Size step). You have no numbers yet.');
+  if((p.confT||p.conf||'30')==='50'||(p.confM||p.conf||'30')==='50')g.push('Your numbers are a rough guess. Confirm at least one of them with the business.');
+  if(!walk(p).done)g.push('Finish the cause tree (Fix step) so you do not miss a second cause.');
+  if(!RC[p.rc])g.push('Choose the primary cause (Fix step).');
+  if(named.length<2)g.push('Compare at least two real options against doing nothing (Fix step).');
+  if(p.pickOpt===''||p.pickOpt==null)g.push('Choose the option you recommend (Fix step).');
+  var o=p.pickOpt!==''&&p.pickOpt!=='none'?p.opts[+p.pickOpt]:null;
+  if(o){var c=optCalc(p,o);
+    if(!(p.whyOpt||'').trim())g.push('Say why you chose this option and not the others.');
+    if(!comp()&&c.pay==null)g.push('Your recommended option does not pay back on cash. Make the case on capacity, risk or the business goal, and say so openly.');
+    if(o.use==='resist')g.push('You expect people to resist your recommended option. Say what you will do about that.');
+    if(o.grow==='no')g.push('Your recommended option would not fit if the work doubled. Say how long it buys.');
+    if(!o.pct)g.push('Estimate what share of the problem your recommended option removes.');
+    if((p.rc==='owner'||p.rc==='external')&&o.type&&o.type!==OPTS[0])g.push('Your primary cause is not a technology cause, but you recommend a technology change. Explain how it reaches the cause.');
+    if(p.swap==='y'&&o.type&&o.type!==OPTS[0]&&!(p.adopt||'').trim())g.push('Your software test says people or steps must change too. Say who has to work differently.');}
+  if(o&&!(o.trade||'').trim())g.push('State the main tradeoff of your recommended option.');
+  if(comp()&&o&&(o.type===OPTS[0]||o.type===OPTS[1]))g.push('The challenge is titled "Spreadsheet Exit." If you recommend keeping the spreadsheet, be ready to defend that with evidence.');
+  if(!(p.users||[]).some(function(u){return (u.role||'').trim();}))g.push('Name who uses your solution (Fix step).');
+  var sts=(p.stories||[]).filter(function(x){return (x.want||'').trim();});
+  if(sts.length<2)g.push('Write at least two user stories, each with a "done when" test (Fix step).');else if(sts.some(function(x){return !(x.done||'').trim();}))g.push('Every user story needs a "done when" test.');
+  if(!HOW.some(function(k){return ((p.how||{})[k[0]]||'').trim();}))g.push('Say how it must work: access, audit trail, data checks (Fix step).');
+  if(!(p.day||[]).some(function(x){return (x.when||'').trim();}))g.push('Add a before-and-after moment for one user (Fix step).');
+  if(!(p.store||[]).some(function(x){return (x.thing||'').trim();}))g.push('List what the solution must store (Fix step).');
+  if(!(p.screens||[]).some(function(x){return (x.name||'').trim();}))g.push('List the screens a user would see (Fix step).');
+  if(!(S.sources||[]).some(function(x){return (x.src||'').trim();}))g.push('Log your AI use and sources, including this tool (Report step).');
+  if(!(p.adopt||'').trim())g.push('Say who has to work differently and what they will need (Fix step).');
+  if(!(p.measure||'').trim()||!(p.target||'').trim())g.push('Name how you will know it worked: a measure and a target (Fix step).');
+  return g;}
+function enc(){return btoa(unescape(encodeURIComponent(JSON.stringify(S))));}
+function dec(s){return JSON.parse(decodeURIComponent(escape(atob(String(s).replace(/\s+/g,'')))));}
+function spec(p){var L=[],o=(p.pickOpt!==''&&p.pickOpt!=='none'&&p.pickOpt!=null)?p.opts[+p.pickOpt]:null,s=size(p),f=function(a,k){return (a||[]).filter(function(x){return (x[k]||'').trim();});},t=function(v,d){return (v||'').trim()||d;};
+  L.push('# Solution spec: '+(o&&o.name?o.name.trim():'(no option chosen yet)'),'','## Problem',t(p.text,'(not written yet)'));
+  if(RC[p.rc])L.push('Primary cause: '+RC[p.rc][0]+'.');
+  if(s.h)L.push('Size: about '+num(s.h)+' hours lost a year.');
+  L.push('','## Goal','Need: '+t(p.need,'(not stated)'),'Done when: '+t(p.req,'(not stated)'));
+  if((p.measure||'').trim())L.push('Measure: '+p.measure.trim()+(t(p.target,'')?' ('+p.target.trim()+')':''));
+  L.push('','## Users');var us=f(p.users,'role');if(us.length)us.forEach(function(u){L.push('- '+u.role.trim()+': today, '+t(u.today,'(not described)')+'; after, '+t(u.change,'(not described)'));});else L.push('- (none listed)');
+  L.push('','## User stories');var ss=f(p.stories,'want').filter(function(x){return x.pri!=='Not now';});if(ss.length)ss.forEach(function(x,i){L.push('- US-'+(i+1)+' ['+(x.pri||'Must')+'] As a '+t(x.as,'user')+', I want to '+x.want.trim()+(t(x.so,'')?' so that '+x.so.trim():'')+'.','  - Acceptance test: '+t(x.done,'(missing)'));});else L.push('- (none written)');
+  L.push('','## Data');var ds=f(p.store,'thing');if(ds.length)ds.forEach(function(x){L.push('- '+x.thing.trim()+': '+t(x.fields,'(details not listed)')+(t(x.rule,'')?'. Rule: '+x.rule.trim():''));});else L.push('- (not listed)');
+  L.push('','## Screens');var sc=f(p.screens,'name');if(sc.length)sc.forEach(function(x){L.push('- '+x.name.trim()+' ('+t(x.who,'user not stated')+'): '+t(x.does,'(not described)'));});else L.push('- (not listed)');
+  L.push('','## How it must work');var hw=HOW.filter(function(k){return ((p.how||{})[k[0]]||'').trim();});if(hw.length)hw.forEach(function(k){L.push('- '+k[1]+': '+p.how[k[0]].trim());});else L.push('- (not stated)');
+  var st=f(S.steps,'who');if(st.length){L.push('','## Process today');st.forEach(function(x,i){L.push((i+1)+'. '+x.who.trim()+': '+t(x.what,'(step)'));});}
+  var dy=f(p.day,'when');if(dy.length){L.push('','## Before and after');dy.forEach(function(x){L.push('- '+x.when.trim(),'  - Before: '+t(x.before,'(blank)'),'  - After: '+t(x.after,'(blank)'));});}
+  L.push('','## Not in this version');var nn=f(p.stories,'want').filter(function(x){return x.pri==='Not now';});nn.forEach(function(x){L.push('- '+x.want.trim());});if(o&&t(o.trade,''))L.push('- Tradeoff accepted: '+o.trade.trim());if(!nn.length&&!(o&&t(o.trade,'')))L.push('- (nothing listed)');
+  L.push('','## Open questions');var oq=[];p.whys.forEach(function(w){if((w.a||'').trim()&&!(w.e||'').trim())oq.push('Confirm: '+w.a.trim());});checksNow().forEach(function(c){if(S.checks[c.id]==='u')oq.push(c.q);});if(oq.length)oq.forEach(function(q){L.push('- '+q);});else L.push('- (none)');
+  var ev=f(S.notes,'said');if(ev.length){L.push('','## Evidence');ev.forEach(function(n){L.push('- '+t(n.who,'Source not stated')+': '+n.said.trim());});}
+  return L.join('\n');}
+function outlineHtml(p){var s=size(p),o=(p.pickOpt!==''&&p.pickOpt!=='none'&&p.pickOpt!=null)?p.opts[+p.pickOpt]:null,st=S.steps.filter(function(x){return (x.who||'').trim();}),us=(p.users||[]).filter(function(u){return (u.role||'').trim();}),must=(p.stories||[]).filter(function(x){return (x.want||'').trim()&&x.pri==='Must';}),ev=S.notes.filter(function(n){return (n.said||'').trim();}).length,m='<span class="hint">Missing. </span>';
+  var B=[['Situation',(S.process?esc(S.process)+'. ':m)+(S.goal?'The business wants to: '+esc(S.goal)+'. ':'')+(st.length>1?'Show the process map ('+st.length+' steps).':'')],
+   ['What we found by digging',ev?ev+' piece'+(ev===1?'':'s')+' of evidence logged. Lead with the one that surprised you most.':m+'Log what people told you in the Ask step.'],
+   ['The problem and its cause',(p.text?esc(p.text)+'. ':m)+(RC[p.rc]?'Primary cause: '+esc(RC[p.rc][0].charAt(0).toLowerCase()+RC[p.rc][0].slice(1))+'. ':'')+(s.h?'About '+num(s.h)+' hours lost a year.':'')],
+   ['Our solution and who uses it',(o&&o.name?esc(o.name)+'. ':m)+(us.length?'Users: '+us.map(function(u){return esc(u.role.trim());}).join(', ')+'.':'')],
+   ['What it must do and how it must work',must.length?must.length+' must-have user stor'+(must.length===1?'y':'ies')+'. Show them, then the day in the life.':m+'Write user stories in the Fix step.'],
+   ['Tradeoffs and how we will know it worked',(o&&(o.trade||'').trim()?'We give up: '+esc(o.trade.trim())+'. ':m)+((p.measure||'').trim()?'Measure: '+esc(p.measure.trim())+'.':'')]];
+  return '<div class="stack"><h3>Presentation outline</h3><p class="note">Six parts, in the order you will say them. Give each part to one speaker.</p><ol class="gaps">'+B.map(function(b){return '<li><b>'+b[0]+'.</b> '+b[1]+'</li>';}).join('')+'</ol></div>';}
+function shareHtml(){return '<div class="stack"><h3>Work as a team</h3><p class="note">Your entries stay in this browser. To pass the whole case to a teammate, copy the case code and send it to them. They paste it below and load it. Loading replaces whatever is in their browser.</p><div class="row"><button type="button" class="ghost" id="copy-code">Copy case code</button><span class="note" id="code-msg" role="status"></span></div><div class="field"><label for="code-in">Paste a case code</label><textarea id="code-in" rows="2"></textarea></div><div><button type="button" class="ghost" id="load-code">Load this case</button></div></div>';}
+function renderReport(){
+  var p=chosen(),h='<div class="stack"><h2>Write it up</h2><p>The report states the problem, its causes, its size, the options you compared and what you recommend. Everything in it comes from your own entries, so it is only as good as your evidence.</p></div>';
+  if(!p)return h+'<p class="note">You have no problems on your list yet. Add one in the Dig step.</p>'+shareHtml();
+  h+='<div class="field"><label for="pick">Problem to report</label><select id="pick">'+S.problems.map(function(q){return '<option value="'+q.id+'"'+(q.id===p.id?' selected':'')+'>'+esc(q.text||'Untitled problem')+'</option>';}).join('')+'</select></div>';
+  h+='<pre class="ticket" id="ticket" tabindex="0">'+esc(ticket(p))+'</pre><div class="row"><button type="button" class="btn" id="copy">Copy report</button>'+(window.STANDALONE?'<button type="button" class="ghost" data-dl="ticket" data-fn="problem-report.txt">Download report</button><button type="button" class="ghost" id="print">Print this page</button>':'')+'<span class="note" id="copied" role="status"></span></div>';
+  h+='<div class="stack"><h3>Build spec</h3><p class="note">The same findings arranged for whoever will build the solution: users, stories with acceptance tests, data, screens, rules and open questions.</p><pre class="ticket" id="spec" tabindex="0">'+esc(spec(p))+'</pre><div class="row"><button type="button" class="btn" id="copy-spec">Copy spec</button>'+(window.STANDALONE?'<button type="button" class="ghost" data-dl="spec" data-fn="solution-spec.md">Download spec</button>':'')+'<span class="note" id="copied-spec" role="status"></span></div></div>';
+  h+=outlineHtml(p)+'<div class="stack"><h3>AI use and sources</h3><p class="note">Judges score responsible use of AI and sources. Log each one as you go, including this tool.</p>'+rows('_','sources',FSRC)+'</div>';
+  var g=gaps(p);
+  return h+'<div class="stack"><h3>Before you present</h3>'+(g.length?'<ul class="gaps">'+g.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>':'<p class="ok">No gaps found. Be ready to defend each number and say where it came from.</p>')+'</div>'+shareHtml();}
+
+function render(){renderNav();var f={ask:renderAsk,check:renderCheck,dig:renderDig,size:renderSize,fix:renderFix,report:renderReport}[step];$('panel').innerHTML=f()+footer();}
+
+/* ---------- Events ---------- */
+document.addEventListener('click',function(e){var t=e.target.closest('button');if(!t)return;var d=t.dataset,p;
+  if(d.step){go(d.step);window.scrollTo(0,0);return;}
+  if(t.id==='start-own'){S=blank();save();go('ask');return;}
+  if(d.addrow){var HA=holder(d.h),FF={users:FUSERS,stories:FSTORY,day:FDAY,sources:FSRC,store:FSTORE,screens:FSCREEN}[d.addrow],nr={};FF.forEach(function(f){nr[f.k]=f.opts?f.opts[0]:'';});(HA[d.addrow]=HA[d.addrow]||[]).push(nr);save();render();var fe=$(d.addrow+'-'+d.h+'-'+(HA[d.addrow].length-1)+'-'+FF[0].k);if(fe)fe.focus();return;}
+  if(d.rmrow){var HR=holder(d.h);HR[d.rmrow].splice(+d.i,1);save();render();return;}
+  if(d.addl){S[d.addl].push(d.addl==='steps'?{who:'',what:''}:{who:'',said:''});save();render();var f=$(d.addl+'-'+(S[d.addl].length-1)+'-a');if(f)f.focus();return;}
+  if(d.rml){S[d.rml].splice(+d.i,1);save();render();return;}
+  if(d.add){var c=CHECKS.filter(function(x){return x.id===d.add;})[0];p=mk(newId());p.from=c.id;p.text=c.p;S.problems.push(p);save();set('check-out',checkOut());return;}
+  if(t.id==='add-prob'){p=mk(newId());S.problems.push(p);save();render();var el=$('t-'+p.id);if(el)el.focus();return;}
+  if(d.addwhy){p=prob(d.addwhy);if(p&&p.whys.length<5){p.whys.push({a:'',e:''});p.root=false;save();render();var a=$('a-'+p.id+'-'+(p.whys.length-1));if(a)a.focus();}return;}
+  if(d.rmwhy){p=prob(d.rmwhy);if(p){p.whys.splice(+d.w,1);p.root=false;save();render();}return;}
+  if(d.del){if(d.armed){S.problems=S.problems.filter(function(x){return x.id!==d.del;});if(S.chosen===d.del)S.chosen='';save();render();}else{d.armed='1';t.textContent='Click again to delete';}return;}
+  if(d.tree){p=prob(d.tp);if(p){p.tree=p.tree||{};p.tree[d.node]=d.tree;var w=walk(p);if(w.done){p.causes=w.causes;if(w.causes.length===1)p.rc=w.causes[0];else if(w.causes.length&&w.causes.indexOf(p.rc)<0)p.rc='';}save();render();}return;}
+  if(d.treereset){p=prob(d.treereset);if(p){p.tree={};p.causes=[];save();render();}return;}
+  if(d.addopt){p=prob(d.addopt);if(p&&p.opts.length<3){p.opts.push(opt());save();render();}return;}
+  if(d.rmopt){p=prob(d.rmopt);if(p){p.opts.splice(+d.i,1);p.pickOpt='';save();render();}return;}
+  if(d.dl){var bl=new Blob([$(d.dl).textContent],{type:'text/plain'}),u=URL.createObjectURL(bl),a2=document.createElement('a');a2.href=u;a2.download=d.fn;document.body.appendChild(a2);a2.click();a2.remove();setTimeout(function(){URL.revokeObjectURL(u);},1000);return;}
+  if(t.id==='print'){window.print();return;}
+  if(t.id==='copy-spec'){var sp2=$('spec').textContent,nos=function(){selectEl('spec');$('copied-spec').textContent='Spec selected. Press Ctrl+C or Cmd+C to copy.';};try{navigator.clipboard.writeText(sp2).then(function(){$('copied-spec').textContent='Copied.';},nos);}catch(err){nos();}return;}
+  if(t.id==='copy-code'){var code=enc(),okc=function(){$('code-msg').textContent='Case code copied. Send it to your teammate.';},noc=function(){var ta=$('code-in');ta.value=code;ta.focus();ta.select();$('code-msg').textContent='The code is in the box below. Press Ctrl+C or Cmd+C to copy it.';};
+    try{navigator.clipboard.writeText(code).then(okc,noc);}catch(err){noc();}return;}
+  if(t.id==='load-code'){try{var o=dec($('code-in').value);if(!o||!Array.isArray(o.problems)||!Array.isArray(o.steps)||!Array.isArray(o.notes))throw new Error('shape');o.problems.forEach(function(q){var dflt=mk(q.id||newId());for(var k in dflt)if(q[k]==null)q[k]=dflt[k];});o.checks=o.checks||{};o.sources=o.sources||[];o.ev=o.ev||{};o.example=false;S=o;save();go('ask');window.scrollTo(0,0);}catch(err){$('code-msg').textContent='That code could not be read. Copy the whole code again and paste it.';}return;}
+  if(t.id==='copy'){var txt=$('ticket').textContent,done=function(){$('copied').textContent='Copied. Paste it into your notes or slides.';},fail=function(){var r=document.createRange();r.selectNodeContents($('ticket'));var s=window.getSelection();s.removeAllRanges();s.addRange(r);$('copied').textContent='Report selected. Press Ctrl+C or Cmd+C to copy.';};
+    try{navigator.clipboard.writeText(txt).then(done,fail);}catch(err){fail();}return;}
+});
+document.addEventListener('input',function(e){var t=e.target,d=t.dataset,p;
+  if(d.h&&d.n){var H=holder(d.h);if(H&&H[d.n]&&H[d.n][+d.i]){H[d.n][+d.i][d.k]=t.value;save();var tk=$('ticket'),cp=chosen();if(tk&&cp)tk.textContent=ticket(cp);}return;}
+  if(d.how){p=prob(d.p);if(p){p.how=p.how||{};p.how[d.how]=t.value;save();}return;}
+  if(d.ev){S.ev[d.ev]=t.value;save();return;}
+  if(d.l){S[d.l][+d.i][d.k]=t.value;if(d.l==='steps'){set('handoffs',handoffs());set('map',mapSvg());}save();return;}
+  if(d.p){p=prob(d.p);if(!p)return;
+    if(d.o!==undefined){p.opts[+d.o][d.k]=t.value;set('cmp',cmpHtml(p));if(d.k==='name'){var so=$('po-'+p.id);if(so&&so.options[+d.o+2])so.options[+d.o+2].textContent=t.value||'Option '+(+d.o+1);}}
+    else if(d.w!==undefined){p.whys[+d.w][d.k]=t.value;set('n-'+p.id,whyNote(p));}
+    else if(d.k){p[d.k]=t.value;if(d.k==='text')set('h-'+p.id,hintFor(p));if(d.k==='rc')set('fix-out',fixOut(p));set('sz-'+p.id,sizeOut(p));set('rank',rankHtml());}
+    save();return;}
+  if(d.s){S[d.s]=t.value;if(d.s==='topic')set('ladder',ladderHtml());if(d.s==='rate'){S.problems.forEach(function(q){set('sz-'+q.id,sizeOut(q));});set('rank',rankHtml());}save();}
+});
+document.addEventListener('change',function(e){var t=e.target,d=t.dataset,p;
+  if(d.mode){S.mode=t.value;save();render();return;}
+  if(d.check){S.checks[d.check]=t.value;save();set('check-out',checkOut());return;}
+  if(d.swap){p=prob(d.swap);if(p){p.swap=t.value;save();set('swap-out',swapOut(p));}return;}
+  if(d.root){p=prob(d.root);if(p){p.root=t.checked;save();}return;}
+
+  if(t.id==='pick'){S.chosen=t.value;save();render();}
+});
+window.addEventListener('hashchange',function(){var h=fromHash();if(h&&h!==step){step=h;render();}});
+step=fromHash()||'ask';render();
+})();
+</script>
+
+</body>
+</html>
